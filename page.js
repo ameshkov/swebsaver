@@ -1,42 +1,52 @@
+/**
+ * The function to be executed in the page context
+ */
 var parsePage = function () {
-  var domainName = document.querySelector('.stickyHeader-nameText');
-  if (!domainName) {
-    return null;
-  }
-
-  var siteRank = document.querySelector('.rankingItem-value');
-  var siteVisits = document.querySelector('[data-type="visits"] .js-countValue');
-  var siteVisitDuration = document.querySelector('[data-type="time"] .js-countValue');
-  var sitePagesPerVisit = document.querySelector('[data-type="ppv"] .js-countValue');
-  var siteCountries = document.querySelectorAll('#geo-countries-accordion .accordion-group');
-
   var result = {};
-  result.domainName = domainName.innerText;
-  result.rank = siteRank.getAttribute('data-value');
-  result.visits = siteVisits.innerText;
-  result.duration = siteVisitDuration.innerText;
-  result.pagesPerVisit = sitePagesPerVisit.innerText;
+  result.domainName = Sw.siteDomain;
+  result.category = Sw.preloadedData.overview.Category;
+  result.visits = Sw.preloadedData.overview.EngagementsSimilarweb.TotalLastMonthVisits;
+  result.timeOnSite = Sw.preloadedData.overview.EngagementsSimilarweb.TimeOnSite;
+  result.pagesPerVisit = Sw.preloadedData.overview.EngagementsSimilarweb.PageViews;
+  result.rank = Sw.preloadedData.overview.GlobalRank[0];
+  result.countryRank = Sw.preloadedData.overview.Country;
+  result.countryShares = [];
 
-  result.countries = [];
-
-  for (let i = 0; i < siteCountries.length; i++) {
-    let country = siteCountries[i].querySelector('.country-name');
-    let data = siteCountries[i].querySelector('.traffic-share-valueNumber');
-
-    result.countries.push({
-      country: country.innerText,
-      share: data.innerText
-    });
+  for (var i = 0; i < Sw.preloadedData.overview.TopCountryShares.length; i++) {
+    var shareData = Sw.preloadedData.overview.TopCountryShares[i];
+    var countryShare = {
+      name: Sw.Countries.list[shareData[0]].name,
+      code: Sw.Countries.list[shareData[0]].iso2,
+      share: shareData[1]
+    };
+    result.countryShares.push(countryShare);
   }
 
-  return result;
+  // Post message to the content script
+  window.postMessage({ type: "FROM_PAGE", data: JSON.stringify(result) }, "*");
+
+  // Clean up
+  var currentScript = document.currentScript;
+  if (currentScript) {
+    currentScript.parentNode.removeChild(currentScript);
+  }
 };
 
-window.addEventListener('load', function () {
-  var pageInfo = parsePage();
-  if (!pageInfo) {
+// Accept message from the in-page script
+window.addEventListener("message", function (event) {
+  if (event.source != window) {
     return;
   }
 
-  chrome.runtime.sendMessage(pageInfo);  
-});
+  if (event.data.type && (event.data.type == "FROM_PAGE")) {
+    console.log("Content script received: " + event.data.data);
+
+    var pageInfo = JSON.parse(event.data.data);
+    chrome.runtime.sendMessage(pageInfo);
+  }
+}, false);
+
+// Load and execute the in-page parser script
+var script = document.createElement('script');
+script.innerHTML = '(' + parsePage.toString() + ')();';
+document.head.appendChild(script);
